@@ -19,7 +19,7 @@ jobs:
         shell: bash
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME,,}"
+          VERSION=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]')
           VERSION="${VERSION//\//-}"
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION=${{ github.event.inputs.version }}
