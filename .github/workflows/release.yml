@@ -3,145 +3,14 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag version to release"
+        required: true
 jobs:
-  build_on_linux_amd64:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check Version
-        id: version
-        run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libusb-dev libusb-1.0-0-dev libavformat-dev libavcodec-dev libavutil-dev
-      - name: GO!!!!!
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.24
-      - name: Build
-        run: |
-          go build -ldflags "-X main.SSM_VERSION=$VERSION"
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssm-linux-${{ steps.version.outputs.version }}-amd64
-          path: ./ssm
-  build_on_linux_arm64:
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check Version
-        id: version
-        run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
-      - name: Install dependencies
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libusb-dev libusb-1.0-0-dev libavformat-dev libavcodec-dev libavutil-dev
-      - name: GO!!!!!
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.24
-      - name: Build
-        run: |
-          go build -ldflags "-X main.SSM_VERSION=$VERSION"
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssm-linux-${{ steps.version.outputs.version }}-arm64
-          path: ./ssm
-  build_on_windows_amd64:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check Version
-        id: version
-        shell: bash
-        run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
-      - name: GO!!!!!
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.24
-      - name: Install dependencies
-        shell: pwsh
-        run: |
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Syu"
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Sy mingw-w64-x86_64-gcc"
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Sy mingw-w64-x86_64-pkgconf"
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Sy mingw-w64-x86_64-libusb"
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Sy mingw-w64-x86_64-ffmpeg"
-          C:\msys64\usr\bin\bash -lc "pacman --noconfirm -Sy mingw-w64-x86_64-ntldd"
-      - name: Build
-        env:
-          PKG_CONFIG_PATH: C:\msys64\mingw64\lib\pkgconfig;C:\msys64\msys64\mingw64\share\pkgconfig
-        run: |
-          $env:PATH = "C:\msys64\mingw64\bin;" + $env:PATH
-          go build -ldflags "-X main.SSM_VERSION=$VERSION"
-      - name: Copy exe and dlls
-        shell: bash
-        run: |
-          mkdir build
-          cp ./ssm.exe ./build/
-          for dll in $(/c/msys64/mingw64/bin/ntldd.exe -R ./ssm.exe | awk '{ if ($3 ~ /^C:\\msys64/) print $3; }'); do
-            cp -v $dll ./build/
-          done
-      - name: Upload Artifact (Full)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssm-windows-${{ steps.version.outputs.version }}-full-amd64
-          path: ./build/
-      - name: Upload Artifact (Executable)
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssm-windows-${{ steps.version.outputs.version }}-exe-only-amd64
-          path: ./ssm.exe
-  build_on_macos_amd64:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check Version
-        shell: bash
-        id: version
-        run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
-      - name: Install dependencies
-        run: |
-          brew install ffmpeg
-      - name: GO!!!!!
-        uses: actions/setup-go@v5
-        with:
-          go-version: ^1.24
-      - name: Build
-        run: |
-          go build -ldflags "-X main.SSM_VERSION=$VERSION"
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ssm-darwin-${{ steps.version.outputs.version }}-amd64
-          path: ./ssm
   build_on_macos_arm64:
-    runs-on: macos-13
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
         with:
@@ -150,9 +19,13 @@ jobs:
         shell: bash
         id: version
         run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
+          VERSION="${GITHUB_REF_NAME,,}"
+          VERSION="${VERSION//\//-}"
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       - name: Install dependencies
         run: |
           brew install ffmpeg
@@ -168,39 +41,24 @@ jobs:
         with:
           name: ssm-darwin-${{ steps.version.outputs.version }}-arm64
           path: ./ssm
-  github_release:
-    runs-on: ubuntu-22.04
-    needs:
-      - build_on_linux_amd64
-      - build_on_linux_arm64
-      - build_on_windows_amd64
-      - build_on_macos_amd64
-      - build_on_macos_arm64
+  Upload-Release:
+    permissions: write-all
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version != '' }}
+    needs: [build_on_macos_arm64]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-      - name: Check Version
-        shell: bash
-        run: |
-          version=$(echo $GITHUB_REF | cut -d"/" -f3 | sed 's/v//g')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          echo "version=$version" >> $GITHUB_OUTPUT
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: builds/
-      - name: Compress Artifacts
-        shell: bash
-        run: |
-          cd builds
-          for dir in *; do
-            zip -r $dir.zip $dir
-          done
+          path: bin/
+          merge-multiple: true
+  
+      - name: Display structure of downloaded files
+        run: ls -R
+        working-directory: bin
+  
       - name: Upload Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create v"$VERSION" -t "v$VERSION" --generate-notes
-          gh release upload "v$VERSION" builds/*.zip
-
+        uses: softprops/action-gh-release@v2
+        if: ${{ success() }}
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          files: bin/*
